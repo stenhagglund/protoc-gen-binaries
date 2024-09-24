@@ -1,0 +1,137 @@
+diff --git a/BUILD.bazel b/BUILD.bazel
+index 89d8e98f0..e0dca8a73 100644
+--- a/BUILD.bazel
++++ b/BUILD.bazel
+@@ -237,6 +237,29 @@ cc_binary(
+     deps = ["//src/google/protobuf/compiler:protoc_lib"],
+ )
+ 
++cc_binary(
++    name = "protoc-gen-python",
++    srcs = ["python.cc"],
++    deps = [
++        "//src/google/protobuf/compiler:protoc_lib",
++    ],
++    copts = COPTS,
++    linkopts = LINK_OPTS,
++    visibility = ["//visibility:public"],
++)
++
++cc_binary(
++    name = "protoc-gen-pyi",
++    srcs = ["pyi.cc"],
++    deps = [
++        "//src/google/protobuf/compiler:protoc_lib",
++    ],
++    copts = COPTS,
++    linkopts = LINK_OPTS,
++    visibility = ["//visibility:public"],
++)
++
++
+ cc_binary(
+     name = "protoc_static",
+     copts = COPTS,
+diff --git a/plugins/BUILD b/plugins/BUILD
+new file mode 100644
+index 000000000..d423ff7db
+--- /dev/null
++++ b/plugins/BUILD
+@@ -0,0 +1,24 @@
++load("@rules_cc//cc:defs.bzl", "cc_binary")
++load("//build_defs:cpp_opts.bzl", "COPTS", "LINK_OPTS")
++
++cc_binary(
++    name = "protoc-gen-python",
++    srcs = ["python.cc"],
++    deps = [
++        "//:protoc_lib",
++    ],
++    copts = COPTS,
++    linkopts = LINK_OPTS,
++    visibility = ["//visibility:public"],
++)
++
++cc_binary(
++    name = "protoc-gen-pyi",
++    srcs = ["pyi.cc"],
++    deps = [
++        "//:protoc_lib",
++    ],
++    copts = COPTS,
++    linkopts = LINK_OPTS,
++    visibility = ["//visibility:public"],
++)
+\ No newline at end of file
+diff --git a/src/google/protobuf/compiler/BUILD.bazel b/src/google/protobuf/compiler/BUILD.bazel
+index 5012ee793..95f419521 100644
+--- a/src/google/protobuf/compiler/BUILD.bazel
++++ b/src/google/protobuf/compiler/BUILD.bazel
+@@ -233,6 +233,40 @@ cc_library(
+     ],
+ )
+ 
++PLUGINS = {
++    "protoc-gen-python" : {
++        "srcs": [
++            "main_protoc_gen_python.cc",
++        ],
++        "deps": [
++        "//src/google/protobuf/compiler/python",
++        ]
++    },
++    "protoc-gen-pyi" : {
++        "srcs": [
++            "main_protoc_gen_pyi.cc",
++        ],
++        "deps": [
++        "//src/google/protobuf/compiler/python",
++        ]
++    }
++}
++
++[
++    cc_binary(
++    name = name,
++    srcs = config["srcs"],
++    copts = COPTS,
++    deps = [
++        ":code_generator",
++        ":command_line_interface",
++        ":importer",
++        "//src/google/protobuf",
++        "//src/google/protobuf:port",
++        "@com_google_absl//absl/log:initialize",
++    ] + config["deps"],
++) for name, config in PLUGINS.items()]
++
+ # This is a build of the protobuf compiler without code generators.
+ cc_binary(
+     name = "protoc_minimal",
+diff --git a/src/google/protobuf/compiler/main_protoc_gen_pyi.cc b/src/google/protobuf/compiler/main_protoc_gen_pyi.cc
+new file mode 100644
+index 000000000..23079839d
+--- /dev/null
++++ b/src/google/protobuf/compiler/main_protoc_gen_pyi.cc
+@@ -0,0 +1,7 @@
++#include "google/protobuf/compiler/python/pyi_generator.h"
++#include "google/protobuf/compiler/plugin.h"
++
++int main(int argc, char *argv[]) {
++  google::protobuf::compiler::python::PyiGenerator generator;
++  return google::protobuf::compiler::PluginMain(argc, argv, &generator);
++}
+diff --git a/src/google/protobuf/compiler/main_protoc_gen_python.cc b/src/google/protobuf/compiler/main_protoc_gen_python.cc
+new file mode 100644
+index 000000000..fd90acbdd
+--- /dev/null
++++ b/src/google/protobuf/compiler/main_protoc_gen_python.cc
+@@ -0,0 +1,7 @@
++#include "google/protobuf/compiler/python/generator.h"
++#include "google/protobuf/compiler/plugin.h"
++
++int main(int argc, char *argv[]) {
++  google::protobuf::compiler::python::Generator generator;
++  return google::protobuf::compiler::PluginMain(argc, argv, &generator);
++}
+\ No newline at end of file
