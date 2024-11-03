@@ -1,0 +1,84 @@
+
+name: Release
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        type: string
+        description: 'Version to build binaries for'
+        required: true
+env:
+  DIST_DIR: ${{ github.workspace }}/dist
+  BUILD_DIR: ${{ github.workspace }}/build
+  REPO_DIR: ${{ github.workspace }}/repo
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Create release
+        run: |
+          gh release create v${{ github.event.inputs.version }} --notes "Release binaries for version v${{ github.event.inputs.version }}"
+        env:
+          GH_TOKEN: ${{ github.token }}
+  upload-binaries:
+    strategy:
+      matrix:
+        os: 
+        - ubuntu-latest 
+        - macos-latest
+        - macos-13
+        arch:
+        - X64
+        - ARM64
+        exclude:
+        # not yet available for free runners
+        - os: ubuntu-latest
+          arch: ARM64
+         # only free mac os runner for x64 is macos-13
+         # later versions are only available on larger paid runners
+        - os: macos-latest
+          arch: X64
+        - os: macos-13
+          arch: ARM64
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+      attestations: write
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          path: repo
+      - uses: bazel-contrib/setup-bazel@0.9.0
+        with:
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}-${{ matrix.os }}-${{ matrix.arch }}
+          repository-cache: true
+      - name: Build binaries
+        run: |
+          mkdir ${{ env.BUILD_DIR }}
+          cd ${{ env.BUILD_DIR }}
+          git clone --depth 1 --branch v${{ github.event.inputs.version }} https://github.com/protocolbuffers/protobuf
+          cd protobuf
+          git apply ${{ env.REPO_DIR }}/patch.diff
+          bazel build //:protoc_lib
+          bazel build //src/google/protobuf/compiler:protoc-gen-python //src/google/protobuf/compiler:protoc-gen-pyi
+          mkdir -p ${{ env.DIST_DIR }}
+          cp ./bazel-bin/src/google/protobuf/compiler/protoc-gen-python ${{ env.DIST_DIR}}/protoc-gen-python-${{ runner.os }}-${{ runner.arch }} && \
+          chmod +x "${{ env.DIST_DIR}}/protoc-gen-python-${{ runner.os }}-${{ runner.arch }}" && \
+          cp ./bazel-bin/src/google/protobuf/compiler/protoc-gen-pyi ${{ env.DIST_DIR}}/protoc-gen-pyi-${{ runner.os }}-${{ runner.arch }} && \
+          chmod +x "${{ env.DIST_DIR}}/protoc-gen-pyi-${{ runner.os }}-${{ runner.arch }}"
+      - name: Push release assets
+        run: |
+          cd ${{ env.REPO_DIR }}
+          gh release upload v${{ github.event.inputs.version }} ${{ env.DIST_DIR }}/*
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: '${{env.DIST_DIR}}/*'
